@@ -146,18 +146,22 @@ func NewBlockChain(coin string, configfile string, pushHandler func(bchain.Notif
 	if err != nil {
 		return nil, nil, errors.Annotatef(err, "Error parsing file %v", configfile)
 	}
-	bcf, ok := BlockChainFactories[coin]
+	// 工厂模式？去触发构造对应的币种，获取的是实际的rpc对象`btc.NewBitcoinRPC`的函数
+	bcf, ok := BlockChainFactories[coin] 
 	if !ok {
 		return nil, nil, errors.New(fmt.Sprint("Unsupported coin '", coin, "'. Must be one of ", reflect.ValueOf(BlockChainFactories).MapKeys()))
 	}
+	// 实际传入参数去获取对应的btc.NewBitcoinRPC实例对象
 	bc, err := bcf(config, pushHandler)
 	if err != nil {
 		return nil, nil, err
 	}
+	// 接口类型，此处真正分币种初始化
 	err = bc.Initialize()
 	if err != nil {
 		return nil, nil, err
 	}
+	// 对应创建mempool，其实就是初始化了一个mempool同步的处理
 	mempool, err := bc.CreateMempool(bc)
 	if err != nil {
 		return nil, nil, err

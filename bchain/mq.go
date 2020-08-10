@@ -64,6 +64,7 @@ func NewMQ(binding string, callback func(NotificationType)) (*MQ, error) {
 }
 
 func (mq *MQ) run(callback func(NotificationType)) {
+	// 获取到消息之后触发对应同步处理，chanSyncIndex和chanSyncMempool
 	defer func() {
 		if r := recover(); r != nil {
 			glog.Error("MQ loop recovered from ", r)
@@ -72,6 +73,7 @@ func (mq *MQ) run(callback func(NotificationType)) {
 		glog.Info("MQ loop terminated")
 		mq.finished <- nil
 	}()
+	// 给执行一个标志执行完defer置位
 	mq.isRunning = true
 	repeatedError := false
 	for {
@@ -104,6 +106,7 @@ func (mq *MQ) run(callback func(NotificationType)) {
 				nt = NotificationUnknown
 				glog.Infof("MQ: NotificationUnknown %v", string(msg[0]))
 			}
+			// zmq的消息sequence
 			if glog.V(2) {
 				sequence := uint32(0)
 				if len(msg[len(msg)-1]) == 4 {
@@ -111,6 +114,7 @@ func (mq *MQ) run(callback func(NotificationType)) {
 				}
 				glog.Infof("MQ: %v %s-%d", nt, string(msg[0]), sequence)
 			}
+			// 写入channel消息
 			callback(nt)
 		}
 	}

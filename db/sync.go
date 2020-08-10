@@ -103,6 +103,7 @@ func (w *SyncWorker) resyncIndex(onNewBlock bchain.OnNewBlockFunc, initialSync b
 		if err != nil && err != bchain.ErrBlockNotFound {
 			return err
 		}
+		// 本地bestHash不等于remoteBestHash，要处理fork操作
 		if remoteHash != localBestHash {
 			// forked - the remote hash differs from the local hash at the same height
 			glog.Info("resync: local is forked at height ", localBestHeight, ", local hash ", localBestHash, ", remote hash", remoteHash)
@@ -404,6 +405,7 @@ func (w *SyncWorker) getBlockChain(out chan blockResult, done chan struct{}) {
 func (w *SyncWorker) DisconnectBlocks(lower uint32, higher uint32, hashes []string) error {
 	glog.Infof("sync: disconnecting blocks %d-%d", lower, higher)
 	ct := w.chain.GetChainParser().GetChainType()
+	// 判断是btc类型的链还是eth类型的链
 	if ct == bchain.ChainBitcoinType {
 		return w.db.DisconnectBlockRangeBitcoinType(lower, higher)
 	} else if ct == bchain.ChainEthereumType {

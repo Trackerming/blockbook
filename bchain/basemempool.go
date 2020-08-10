@@ -70,6 +70,7 @@ func (a MempoolTxidEntries) Less(i, j int) bool {
 // removeEntryFromMempool removes entry from mempool structs. The caller is responsible for locking!
 func (m *BaseMempool) removeEntryFromMempool(txid string, entry txEntry) {
 	delete(m.txEntries, txid)
+	// 只删除对应交易的entry
 	for _, si := range entry.addrIndexes {
 		outpoints, found := m.addrDescToTx[si.addrDesc]
 		if found {

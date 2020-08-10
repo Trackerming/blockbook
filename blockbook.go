@@ -154,6 +154,7 @@ func mainWithExitCode() int {
 		return exitCodeFatal
 	}
 
+	// 获取配置文件及其参数
 	coin, coinShortcut, coinLabel, err := coins.GetCoinNameFromConfig(*blockchain)
 	if err != nil {
 		glog.Error("config: ", err)
@@ -172,7 +173,7 @@ func mainWithExitCode() int {
 		glog.Error("rpc: ", err)
 		return exitCodeFatal
 	}
-
+	// TODO新建一个rocksDB连接用于存取数据？
 	index, err = db.NewRocksDB(*dbPath, *dbCache, *dbMaxOpenFiles, chain.GetChainParser(), metrics)
 	if err != nil {
 		glog.Error("rocksDB: ", err)
@@ -234,6 +235,7 @@ func mainWithExitCode() int {
 		return exitCodeOK
 	}
 
+	// 新建并获取一个同步worker的对象
 	syncWorker, err = db.NewSyncWorker(index, chain, *syncWorkers, *syncChunk, *blockFrom, *dryRun, chanOsSignal, metrics, internalState)
 	if err != nil {
 		glog.Errorf("NewSyncWorker %v", err)
@@ -248,6 +250,7 @@ func mainWithExitCode() int {
 		return exitCodeFatal
 	}
 
+	// 回滚操作只是去从参数标记当中获取？
 	if *rollbackHeight >= 0 {
 		err = performRollback()
 		if err != nil {
@@ -299,12 +302,14 @@ func mainWithExitCode() int {
 		if chain.GetChainParser().GetChainType() == bchain.ChainBitcoinType {
 			addrDescForOutpoint = index.AddrDescForOutpoint
 		}
+		// 主要进行zmq消息以及处理的初始化
 		err = chain.InitializeMempool(addrDescForOutpoint, onNewTxAddr, onNewTx)
 		if err != nil {
 			glog.Error("initializeMempool ", err)
 			return exitCodeFatal
 		}
 		var mempoolCount int
+		// 主动Resync Mempool去比对与链上数据
 		if mempoolCount, err = mempool.Resync(); err != nil {
 			glog.Error("resyncMempool ", err)
 			return exitCodeFatal
@@ -424,6 +429,7 @@ func startPublicServer() (*server.PublicServer, error) {
 }
 
 func performRollback() error {
+	// 本地db中去回滚操作
 	bestHeight, bestHash, err := index.GetBestBlock()
 	if err != nil {
 		glog.Error("rollbackHeight: ", err)
@@ -432,6 +438,7 @@ func performRollback() error {
 	if uint32(*rollbackHeight) > bestHeight {
 		glog.Infof("nothing to rollback, rollbackHeight %d, bestHeight: %d", *rollbackHeight, bestHeight)
 	} else {
+		// 获取到需要回滚区间的blockhash
 		hashes := []string{bestHash}
 		for height := bestHeight - 1; height >= uint32(*rollbackHeight); height-- {
 			hash, err := index.GetBlockHash(height)
@@ -494,10 +501,12 @@ func newInternalState(coin, coinShortcut, coinLabel string, d *db.RocksDB) (*com
 
 func tickAndDebounce(tickTime time.Duration, debounceTime time.Duration, input chan struct{}, f func()) {
 	timer := time.NewTimer(tickTime)
+	// 防抖与节流
 	var firstDebounce time.Time
 Loop:
 	for {
 		select {
+		// 若chanSyncIndex有同步触发就不依赖定时去做事情
 		case _, ok := <-input:
 			if !timer.Stop() {
 				<-timer.C
@@ -633,6 +642,7 @@ func pushSynchronizationHandler(nt bchain.NotificationType) {
 	if atomic.LoadInt32(&inShutdown) != 0 {
 		return
 	}
+	// 根据zmq消息去给同步channel进行写入一个消息
 	if nt == bchain.NotificationNewBlock {
 		chanSyncIndex <- struct{}{}
 	} else if nt == bchain.NotificationNewTx {

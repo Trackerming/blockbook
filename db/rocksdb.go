@@ -1540,6 +1540,7 @@ func (d *RocksDB) disconnectBlock(height uint32, blockTxs []blockTxs) error {
 func (d *RocksDB) DisconnectBlockRangeBitcoinType(lower uint32, higher uint32) error {
 	blocks := make([][]blockTxs, higher-lower+1)
 	for height := lower; height <= higher; height++ {
+		// 二维数组存储各个区块的交易数据
 		blockTxs, err := d.getBlockTxs(height)
 		if err != nil {
 			return err
@@ -1550,6 +1551,7 @@ func (d *RocksDB) DisconnectBlockRangeBitcoinType(lower uint32, higher uint32) e
 		blocks[height-lower] = blockTxs
 	}
 	for height := higher; height >= lower; height-- {
+		// 从最高往最低进行回滚操作
 		err := d.disconnectBlock(height, blocks[height-lower])
 		if err != nil {
 			return err

@@ -70,6 +70,7 @@ func NewBitcoinRPC(config json.RawMessage, pushHandler func(bchain.NotificationT
 		return nil, errors.Annotatef(err, "Invalid configuration file")
 	}
 	// keep at least 100 mappings block->addresses to allow rollback
+	// 回滚设置限制
 	if c.BlockAddressesToKeep < 100 {
 		c.BlockAddressesToKeep = 100
 	}
@@ -147,6 +148,7 @@ func (b *BitcoinRPC) Initialize() error {
 }
 
 // CreateMempool creates mempool if not already created, however does not initialize it
+// 单例创建mempool
 func (b *BitcoinRPC) CreateMempool(chain bchain.BlockChain) (bchain.Mempool, error) {
 	if b.Mempool == nil {
 		b.Mempool = bchain.NewMempoolBitcoinType(chain, b.ChainConfig.MempoolWorkers, b.ChainConfig.MempoolSubWorkers)
@@ -163,6 +165,7 @@ func (b *BitcoinRPC) InitializeMempool(addrDescForOutpoint bchain.AddrDescForOut
 	b.Mempool.OnNewTxAddr = onNewTxAddr
 	b.Mempool.OnNewTx = onNewTx
 	if b.mq == nil {
+		// b.pushHandle初始化函数`pushSynchronizationHandler`
 		mq, err := bchain.NewMQ(b.ChainConfig.MessageQueueBinding, b.pushHandler)
 		if err != nil {
 			glog.Error("mq: ", err)
