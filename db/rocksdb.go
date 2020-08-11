@@ -486,6 +486,7 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 	if err := d.db.Write(d.wo, wb); err != nil {
 		return err
 	}
+	// 更新区块时间的状态
 	d.is.AppendBlockTime(uint32(block.Time))
 	return nil
 }
@@ -567,6 +568,7 @@ func (ab *AddrBalance) addUtxo(u *Utxo) {
 	ab.manageUtxoMap(u)
 }
 
+// 存储utxo在ab.Utxos中的index
 func (ab *AddrBalance) manageUtxoMap(u *Utxo) {
 	l := len(ab.Utxos)
 	if l >= 16 {
@@ -692,9 +694,11 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 		ta.Outputs = make([]TxOutput, len(tx.Vout))
 		txAddressesMap[string(btxID)] = &ta
 		blockTxAddresses[txi] = &ta
+		// 处理tx的输出信息
 		for i, output := range tx.Vout {
 			tao := &ta.Outputs[i]
 			tao.ValueSat = output.ValueSat
+			// 地址的字节数组
 			addrDesc, err := d.chainParser.GetAddrDescFromVout(&output)
 			if err != nil || len(addrDesc) == 0 || len(addrDesc) > maxAddrDescLen {
 				if err != nil {
@@ -708,6 +712,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				continue
 			}
 			tao.AddrDesc = addrDesc
+			// 需要addressDesc存在并且为非OP_RETURN类型的数据
 			if d.chainParser.IsAddrDescIndexable(addrDesc) {
 				strAddrDesc := string(addrDesc)
 				balance, e := balances[strAddrDesc]
@@ -716,6 +721,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 					if err != nil {
 						return err
 					}
+					// 若之前没有存储则重新存储
 					if balance == nil {
 						balance = &AddrBalance{}
 					}
@@ -739,6 +745,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 		}
 	}
 	// process inputs
+	// TODO:为什么不放在一个for里面？
 	for txi := range block.Txs {
 		tx := &block.Txs[txi]
 		spendingTxid := blockTxIDs[txi]
@@ -764,6 +771,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				}
 				if ita == nil {
 					// allow parser to process unknown input, some coins may implement special handling, default is to log warning
+					// 实际上没有返回数据？
 					tai.AddrDesc = d.chainParser.GetAddrDescForUnknownInput(tx, i)
 					continue
 				}
@@ -776,6 +784,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				glog.Warningf("rocksdb: height %d, tx %v, input tx %v vout %v is out of bounds of stored tx", block.Height, tx.Txid, input.Txid, input.Vout)
 				continue
 			}
+			// 从交易输入来源的txID当中去获取output
 			spentOutput := &ita.Outputs[int(input.Vout)]
 			if spentOutput.Spent {
 				glog.Warningf("rocksdb: height %d, tx %v, input tx %v vout %v is double spend", block.Height, tx.Txid, input.Txid, input.Vout)
@@ -791,6 +800,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 				}
 				continue
 			}
+			// 这一段重复的代码看得就挺难受的
 			if d.chainParser.IsAddrDescIndexable(spentOutput.AddrDesc) {
 				strAddrDesc := string(spentOutput.AddrDesc)
 				balance, e := balances[strAddrDesc]
@@ -812,6 +822,7 @@ func (d *RocksDB) processAddressesBitcoinType(block *bchain.Block, addresses add
 					balance.Txs++
 				}
 				balance.BalanceSat.Sub(&balance.BalanceSat, &spentOutput.ValueSat)
+				// 将balance中的utxo的vout状态置位-1当作spending的标志
 				balance.markUtxoAsSpent(btxID, int32(input.Vout))
 				if balance.BalanceSat.Sign() < 0 {
 					d.resetValueSatToZero(&balance.BalanceSat, spentOutput.AddrDesc, "balance")
@@ -856,6 +867,7 @@ func (d *RocksDB) storeAddresses(wb *gorocksdb.WriteBatch, height uint32, addres
 	return nil
 }
 
+// vlq编码数据并存储
 func (d *RocksDB) storeTxAddresses(wb *gorocksdb.WriteBatch, am map[string]*TxAddresses) error {
 	varBuf := make([]byte, maxPackedBigintBytes)
 	buf := make([]byte, 1024)
@@ -885,6 +897,7 @@ func (d *RocksDB) storeBalances(wb *gorocksdb.WriteBatch, abm map[string]*AddrBa
 func (d *RocksDB) cleanupBlockTxs(wb *gorocksdb.WriteBatch, block *bchain.Block) error {
 	keep := d.chainParser.KeepBlockAddresses()
 	// cleanup old block address
+	// 只保留keep期内的区块和地址交易的数据
 	if block.Height > uint32(keep) {
 		for rh := block.Height - uint32(keep); rh > 0; rh-- {
 			key := packUint(rh)
@@ -971,6 +984,7 @@ func (d *RocksDB) getBlockTxs(height uint32) ([]blockTxs, error) {
 
 // GetAddrDescBalance returns AddrBalance for given addrDesc
 func (d *RocksDB) GetAddrDescBalance(addrDesc bchain.AddressDescriptor, detail AddressBalanceDetail) (*AddrBalance, error) {
+	// 猜测通过addrDesc去获取对应的存储数据
 	val, err := d.db.GetCF(d.ro, d.cfh[cfAddressBalance], addrDesc)
 	if err != nil {
 		return nil, err
@@ -1076,6 +1090,7 @@ func appendTxOutput(txo *TxOutput, buf []byte, varBuf []byte) []byte {
 }
 
 func unpackAddrBalance(buf []byte, txidUnpackedLen int, detail AddressBalanceDetail) (*AddrBalance, error) {
+	// vlq编码处理获取到的字节数
 	txs, l := unpackVaruint(buf)
 	sentSat, sl := unpackBigint(buf[l:])
 	balanceSat, bl := unpackBigint(buf[l+sl:])
@@ -1085,6 +1100,7 @@ func unpackAddrBalance(buf []byte, txidUnpackedLen int, detail AddressBalanceDet
 		SentSat:    sentSat,
 		BalanceSat: balanceSat,
 	}
+	// 区分是否为utxo模型类型的数据
 	if detail != AddressBalanceDetailNoUTXO {
 		// estimate the size of utxos to avoid reallocation
 		ab.Utxos = make([]Utxo, 0, len(buf[l:])/txidUnpackedLen+3)
@@ -1106,7 +1122,7 @@ func unpackAddrBalance(buf []byte, txidUnpackedLen int, detail AddressBalanceDet
 			}
 			if detail == AddressBalanceDetailUTXO {
 				ab.Utxos = append(ab.Utxos, u)
-			} else {
+			} else { // 多了一个在map中添加对应index的map管理操作
 				ab.addUtxo(&u)
 			}
 		}

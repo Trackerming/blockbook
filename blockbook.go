@@ -98,7 +98,7 @@ var (
 	metrics                       *common.Metrics
 	syncWorker                    *db.SyncWorker
 	internalState                 *common.InternalState
-	callbacksOnNewBlock           []bchain.OnNewBlockFunc
+	callbacksOnNewBlock           []bchain.OnNewBlockFunc // callback有哪些操作
 	callbacksOnNewTxAddr          []bchain.OnNewTxAddrFunc
 	callbacksOnNewTx              []bchain.OnNewTxFunc
 	callbacksOnNewFiatRatesTicker []fiat.OnNewFiatRatesTicker
@@ -507,6 +507,7 @@ Loop:
 	for {
 		select {
 		// 若chanSyncIndex有同步触发就不依赖定时去做事情
+		// 思路貌似是当zmq消息触发之后去重新重置定时器，然后让定时器到达设定时间，进入读取定时器channel进行执行传入的回调同步执行方式
 		case _, ok := <-input:
 			if !timer.Stop() {
 				<-timer.C

@@ -122,6 +122,7 @@ func (w *SyncWorker) resyncIndex(onNewBlock bchain.OnNewBlockFunc, initialSync b
 	// if parallel operation is enabled and the number of blocks to be connected is large,
 	// use parallel routine to load majority of blocks
 	// use parallel sync only in case of initial sync because it puts the db to inconsistent state
+	// 初次同步的时候采用并行执行的方式去提升效率
 	if w.syncWorkers > 1 && initialSync {
 		remoteBestHeight, err := w.chain.GetBestBlockHeight()
 		if err != nil {
@@ -142,9 +143,11 @@ func (w *SyncWorker) resyncIndex(onNewBlock bchain.OnNewBlockFunc, initialSync b
 			return w.resyncIndex(onNewBlock, initialSync)
 		}
 	}
+	// 正常同步某一个区块
 	return w.connectBlocks(onNewBlock, initialSync)
 }
 
+// 当出现handleFork时候这段时间恰好有依赖的查询数据，会导致什么情况？还是需要应用层自己去规避？
 func (w *SyncWorker) handleFork(localBestHeight uint32, localBestHash string, onNewBlock bchain.OnNewBlockFunc, initialSync bool) error {
 	// find forked blocks, disconnect them and then synchronize again
 	var height uint32
@@ -178,6 +181,7 @@ func (w *SyncWorker) connectBlocks(onNewBlock bchain.OnNewBlockFunc, initialSync
 	done := make(chan struct{})
 	defer close(done)
 
+	// 获取区块数据
 	go w.getBlockChain(bch, done)
 
 	var lastRes, empty blockResult
@@ -192,6 +196,7 @@ func (w *SyncWorker) connectBlocks(onNewBlock bchain.OnNewBlockFunc, initialSync
 			return err
 		}
 		if onNewBlock != nil {
+			// socket.io广播了一下，public server中
 			onNewBlock(res.block.Hash, res.block.Height)
 		}
 		if res.block.Height > 0 && res.block.Height%1000 == 0 {
@@ -201,6 +206,7 @@ func (w *SyncWorker) connectBlocks(onNewBlock bchain.OnNewBlockFunc, initialSync
 		return nil
 	}
 
+	// 初次同步的时候的标志在这里是会循环进行处理的
 	if initialSync {
 	ConnectLoop:
 		for {
@@ -247,11 +253,13 @@ func (w *SyncWorker) ConnectBlocksParallel(lower, higher uint32) error {
 	for i := 0; i < w.syncWorkers; i++ {
 		bch[i] = make(chan *bchain.Block)
 	}
+	// 这里上下2个bch是啥意思？GG，原来是hch和bch，这命名style真令人着急
 	hch := make(chan hashHeight, w.syncWorkers)
 	hchClosed := atomic.Value{}
 	hchClosed.Store(false)
 	writeBlockDone := make(chan struct{})
 	terminating := make(chan struct{})
+	// TODO:写入如何触发，batch如何分工，历史不keep的区块数据如何处理
 	writeBlockWorker := func() {
 		defer close(writeBlockDone)
 		bc, err := w.db.InitBulkConnect()
@@ -259,10 +267,13 @@ func (w *SyncWorker) ConnectBlocksParallel(lower, higher uint32) error {
 			glog.Error("sync: InitBulkConnect error ", err)
 		}
 		lastBlock := lower - 1
+		// 最小100，keep at least 100 mappings block->addresses to allow rollback
 		keep := uint32(w.chain.GetChainParser().KeepBlockAddresses())
 	WriteBlockLoop:
+		// 循环去从对应数组中拿block进行写入操作
 		for {
 			select {
+			// 等待获取对应worker的hashHeight，bcChain.Block
 			case b := <-bch[(lastBlock+1)%uint32(w.syncWorkers)]:
 				if b == nil {
 					// channel is closed and empty - work is done
@@ -311,6 +322,7 @@ func (w *SyncWorker) ConnectBlocksParallel(lower, higher uint32) error {
 				continue
 			}
 			select {
+			// 通过这种方式去对应数组顺序触发对应的block，同步时候读取数组中的对应index的block进行存储
 			case bch[hh.height%uint32(w.syncWorkers)] <- block:
 			case <-terminating:
 				break GetBlockLoop
@@ -318,17 +330,21 @@ func (w *SyncWorker) ConnectBlocksParallel(lower, higher uint32) error {
 		}
 		glog.Info("getBlockWorker ", i, " exiting...")
 	}
+	// 根据workers的个数进行获取Block的数据并写入WriteBlockWorker的读取channel
 	for i := 0; i < w.syncWorkers; i++ {
 		wg.Add(1)
 		go getBlockWorker(i)
 	}
+	// 协程运行writeBlock部分
 	go writeBlockWorker()
 	var hash string
 	start := time.Now()
 	msTime := time.Now().Add(1 * time.Minute)
 ConnectLoop:
+	// 去写入hash与height的结构触发getBlockWorker
 	for h := lower; h <= higher; {
 		select {
+		// 用于检验channel正常，实际上是执行default了	
 		case <-w.chanOsSignal:
 			glog.Info("connectBlocksParallel interrupted at height ", h)
 			err = ErrOperationInterrupted
@@ -348,6 +364,7 @@ ConnectLoop:
 				glog.Info("connecting block ", h, " ", hash, ", elapsed ", time.Since(start), " ", w.db.GetAndResetConnectBlockStats())
 				start = time.Now()
 			}
+			// 耗时达到1Min输出状态信息，增加判断时间
 			if msTime.Before(time.Now()) {
 				glog.Info(w.db.GetMemoryStats())
 				w.metrics.IndexDBSize.Set(float64(w.db.DatabaseSizeOnDisk()))
@@ -360,10 +377,12 @@ ConnectLoop:
 	// signal stop to workers that are in a error loop
 	hchClosed.Store(true)
 	// wait for workers and close bch that will stop writer loop
+	// 一直等待知道getBlockWorker，阻塞直至几个worker全部都处理完毕
 	wg.Wait()
 	for i := 0; i < w.syncWorkers; i++ {
 		close(bch[i])
 	}
+	// TODO:写入完毕，closed就会触发？
 	<-writeBlockDone
 	return err
 }

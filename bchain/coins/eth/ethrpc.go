@@ -87,6 +87,7 @@ func NewEthereumRPC(config json.RawMessage, pushHandler func(bchain.Notification
 	}
 
 	// always create parser
+	// 基础解析器将eth的金额精度构造
 	s.Parser = NewEthereumParser(c.BlockAddressesToKeep)
 	s.timeout = time.Duration(c.RPCTimeout) * time.Second
 
@@ -94,6 +95,7 @@ func NewEthereumRPC(config json.RawMessage, pushHandler func(bchain.Notification
 	// the subscription is done in Initialize
 	s.chanNewBlock = make(chan *ethtypes.Header)
 	go func() {
+		// 协程中循环接收rpc中的chan *ethtypes.Header类型的channel
 		for {
 			h, ok := <-s.chanNewBlock
 			if !ok {
@@ -113,6 +115,7 @@ func NewEthereumRPC(config json.RawMessage, pushHandler func(bchain.Notification
 	// new mempool transaction notifications handling
 	// the subscription is done in Initialize
 	s.chanNewTx = make(chan ethcommon.Hash)
+	// 同理在协程中去接收channel中的消息触发对应的push回调进行同步处理
 	go func() {
 		for {
 			t, ok := <-s.chanNewTx

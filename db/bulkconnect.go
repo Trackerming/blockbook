@@ -60,6 +60,7 @@ func (d *RocksDB) InitBulkConnect() (*BulkConnect, error) {
 func (b *BulkConnect) storeTxAddresses(wb *gorocksdb.WriteBatch, all bool) (int, int, error) {
 	var txm map[string]*TxAddresses
 	var sp int
+	// 是否写入所有的数据
 	if all {
 		txm = b.txAddressesMap
 		b.txAddressesMap = make(map[string]*TxAddresses)
@@ -81,6 +82,7 @@ func (b *BulkConnect) storeTxAddresses(wb *gorocksdb.WriteBatch, all bool) (int,
 		}
 		sp = len(txm)
 		// store some other random transactions if necessary
+		// 再添加一些随机的交易数据
 		if len(txm) < partialStoreAddresses {
 			for k, a := range b.txAddressesMap {
 				txm[k] = a
@@ -171,6 +173,7 @@ func (b *BulkConnect) storeBulkAddresses(wb *gorocksdb.WriteBatch) error {
 
 func (b *BulkConnect) connectBlockBitcoinType(block *bchain.Block, storeBlockTxs bool) error {
 	addresses := make(addressesMap)
+	// b.balances是一个内存中的缓存地址指向存储的空间？
 	if err := b.d.processAddressesBitcoinType(block, addresses, b.txAddressesMap, b.balances); err != nil {
 		return err
 	}
@@ -178,8 +181,10 @@ func (b *BulkConnect) connectBlockBitcoinType(block *bchain.Block, storeBlockTxs
 	var sa bool
 	if len(b.txAddressesMap) > maxBulkTxAddresses || len(b.balances) > maxBulkBalances {
 		sa = true
+		// 分批次去对应存储
 		if len(b.txAddressesMap)+partialStoreAddresses > maxBulkTxAddresses {
 			storeAddressesChan = make(chan error)
+			// TODO:这里采用go的目的是
 			go b.parallelStoreTxAddresses(storeAddressesChan, false)
 		}
 		if len(b.balances)+partialStoreBalances > maxBulkBalances {
