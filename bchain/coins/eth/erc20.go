@@ -55,7 +55,7 @@ func addressFromPaddedHex(s string) (string, error) {
 	a := ethcommon.BigToAddress(&t)
 	return a.String(), nil
 }
-
+// 从log中解析transfer事件来进行同步
 func erc20GetTransfersFromLog(logs []*rpcLog) ([]bchain.Erc20Transfer, error) {
 	var r []bchain.Erc20Transfer
 	for _, l := range logs {
@@ -65,14 +65,17 @@ func erc20GetTransfersFromLog(logs []*rpcLog) ([]bchain.Erc20Transfer, error) {
 			if !ok {
 				return nil, errors.New("Data is not a number")
 			}
+			// from
 			from, err := addressFromPaddedHex(l.Topics[1])
 			if err != nil {
 				return nil, err
 			}
+			// to
 			to, err := addressFromPaddedHex(l.Topics[2])
 			if err != nil {
 				return nil, err
 			}
+			// 构造出transfer对应的事件进行同步
 			r = append(r, bchain.Erc20Transfer{
 				Contract: EIP55AddressFromAddress(l.Address),
 				From:     EIP55AddressFromAddress(from),
@@ -83,9 +86,10 @@ func erc20GetTransfersFromLog(logs []*rpcLog) ([]bchain.Erc20Transfer, error) {
 	}
 	return r, nil
 }
-
+// 发送给合约地址的方式调用的transfer方法
 func erc20GetTransfersFromTx(tx *rpcTransaction) ([]bchain.Erc20Transfer, error) {
 	var r []bchain.Erc20Transfer
+	// 判断是否是erc20的transfer方法得到的签名
 	if len(tx.Payload) == 128+len(erc20TransferMethodSignature) && strings.HasPrefix(tx.Payload, erc20TransferMethodSignature) {
 		to, err := addressFromPaddedHex(tx.Payload[len(erc20TransferMethodSignature) : 64+len(erc20TransferMethodSignature)])
 		if err != nil {

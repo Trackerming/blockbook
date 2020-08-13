@@ -69,6 +69,7 @@ func (d *RocksDB) GetAddrDescContracts(addrDesc bchain.AddressDescriptor) (*Addr
 		if len(buf) < eth.EthereumTypeAddressDescriptorLen {
 			return nil, errors.New("Invalid data stored in cfAddressContracts for AddrDesc " + addrDesc.String())
 		}
+		// txs的个数
 		txs, l := unpackVaruint(buf[eth.EthereumTypeAddressDescriptorLen:])
 		contract := append(bchain.AddressDescriptor(nil), buf[:eth.EthereumTypeAddressDescriptorLen]...)
 		c = append(c, AddrContract{
@@ -107,6 +108,7 @@ func (d *RocksDB) addToAddressesAndContractsEthereumType(addrDesc bchain.Address
 	strAddrDesc := string(addrDesc)
 	ac, e := addressContracts[strAddrDesc]
 	if !e {
+		// 从DB中获取地址相应的contract
 		ac, err = d.GetAddrDescContracts(addrDesc)
 		if err != nil {
 			return err
@@ -119,6 +121,7 @@ func (d *RocksDB) addToAddressesAndContractsEthereumType(addrDesc bchain.Address
 	} else {
 		d.cbs.balancesHit++
 	}
+	// 看传入的参数，处理ETH正常交易的时候传入的就是nil
 	if contract == nil {
 		if addTxCount {
 			ac.NonContractTxs++
@@ -143,6 +146,7 @@ func (d *RocksDB) addToAddressesAndContractsEthereumType(addrDesc bchain.Address
 			}
 		}
 	}
+	// counted容易误解，其实这个函数是加入Map中，若map中存在则给map的index递增且返回true，若map中不存在则append这个tx且返回false
 	counted := addToAddressesMap(addresses, strAddrDesc, btxID, index)
 	if !counted {
 		ac.TotalTxs++
@@ -170,6 +174,7 @@ func (d *RocksDB) processAddressesEthereumType(block *bchain.Block, addresses ad
 		blockTx := &blockTxs[txi]
 		blockTx.btxID = btxID
 		var from, to bchain.AddressDescriptor
+		// 对于ETH交易则基本只有一个from、to按照兼容BTC交易的格式进行处理数据
 		// there is only one output address in EthereumType transaction, store it in format txid 0
 		if len(tx.Vout) == 1 && len(tx.Vout[0].ScriptPubKey.Addresses) == 1 {
 			to, err = d.chainParser.GetAddrDescFromAddress(tx.Vout[0].ScriptPubKey.Addresses[0])
@@ -219,6 +224,7 @@ func (d *RocksDB) processAddressesEthereumType(block *bchain.Block, addresses ad
 				glog.Warningf("rocksdb: GetErc20FromTx %v - height %d, tx %v, transfer %v", err, block.Height, tx.Txid, t)
 				continue
 			}
+			// 处理带合约类型的交易及相关统计
 			if err = d.addToAddressesAndContractsEthereumType(to, btxID, int32(i), contract, addresses, addressContracts, true); err != nil {
 				return nil, err
 			}

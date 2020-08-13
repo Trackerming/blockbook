@@ -96,6 +96,7 @@ func ethNumber(n string) (int64, error) {
 	return 0, errors.Errorf("Not a number: '%v'", n)
 }
 
+// 以兼容btc交易的格式进行转换eth的交易格式
 func (p *EthereumParser) ethTxToTx(tx *rpcTransaction, receipt *rpcReceipt, blocktime int64, confirmations uint32, fixEIP55 bool) (*bchain.Tx, error) {
 	txid := tx.Hash
 	var (
@@ -114,6 +115,7 @@ func (p *EthereumParser) ethTxToTx(tx *rpcTransaction, receipt *rpcReceipt, bloc
 		}
 		ta = []string{tx.To}
 	}
+	// log recepit数据格式的处理
 	if fixEIP55 && receipt != nil && receipt.Logs != nil {
 		for _, l := range receipt.Logs {
 			if len(l.Address) > 2 {
@@ -447,8 +449,10 @@ func GetHeightFromTx(tx *bchain.Tx) (uint32, error) {
 func (p *EthereumParser) EthereumTypeGetErc20FromTx(tx *bchain.Tx) ([]bchain.Erc20Transfer, error) {
 	var r []bchain.Erc20Transfer
 	var err error
+	// 从存储的交易的receipt当中进行解析erc20 transfer相关的事件数据
 	csd, ok := tx.CoinSpecificData.(completeTransaction)
 	if ok {
+		// 两种类型的transfer，从事件log中或者直接从tx当中进行解析
 		if csd.Receipt != nil {
 			r, err = erc20GetTransfersFromLog(csd.Receipt.Logs)
 		} else {

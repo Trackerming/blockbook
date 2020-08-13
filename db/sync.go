@@ -226,6 +226,7 @@ func (w *SyncWorker) connectBlocks(onNewBlock bchain.OnNewBlockFunc, initialSync
 		}
 	} else {
 		// while regular sync, OS sig is handled by waitForSignalAndShutdown
+		// range channel自动等待channel动作直至channel关闭
 		for res := range bch {
 			err := connect(res)
 			if err != nil {
@@ -392,6 +393,7 @@ type blockResult struct {
 	err   error
 }
 
+// 获取到对应币种的block信息之后将block的结果通过channel发送出去
 func (w *SyncWorker) getBlockChain(out chan blockResult, done chan struct{}) {
 	defer close(out)
 
@@ -406,6 +408,7 @@ func (w *SyncWorker) getBlockChain(out chan blockResult, done chan struct{}) {
 			return
 		default:
 		}
+		// 通过blockChainMetrics.b.GetBlock去对应的币种rpc去获取到block的数据进行处理
 		block, err := w.chain.GetBlock(hash, height)
 		if err != nil {
 			if err == bchain.ErrBlockNotFound {

@@ -198,6 +198,7 @@ func (b *EthereumRPC) InitializeMempool(addrDescForOutpoint bchain.AddrDescForOu
 	b.Mempool.OnNewTxAddr = onNewTxAddr
 	b.Mempool.OnNewTx = onNewTx
 
+	// b.newBlockSubscription和b.newTxSubscription就是订阅之后的client
 	if err = b.subscribeEvents(); err != nil {
 		return err
 	}
@@ -209,6 +210,7 @@ func (b *EthereumRPC) InitializeMempool(addrDescForOutpoint bchain.AddrDescForOu
 
 func (b *EthereumRPC) subscribeEvents() error {
 	// subscriptions
+	// 订阅一系列事件newHeads、newPendingTransaction
 	if err := b.subscribe(func() (*rpc.ClientSubscription, error) {
 		// invalidate the previous subscription - it is either the first one or there was an error
 		b.newBlockSubscription = nil
@@ -245,6 +247,7 @@ func (b *EthereumRPC) subscribeEvents() error {
 }
 
 // subscribe subscribes notification and tries to resubscribe in case of error
+// 去subscribe事件的时候出现错误设置一个定时器去进行定时触发
 func (b *EthereumRPC) subscribe(f func() (*rpc.ClientSubscription, error)) error {
 	s, err := f()
 	if err != nil {
@@ -492,7 +495,7 @@ func (b *EthereumRPC) getBlockRaw(hash string, height uint32, fullTxs bool) (jso
 	}
 	return raw, nil
 }
-
+// 获取指定区块的erc20 Transfer事件的log
 func (b *EthereumRPC) getERC20EventsForBlock(blockNumber string) (map[string][]*rpcLog, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
 	defer cancel()
@@ -527,6 +530,7 @@ func (b *EthereumRPC) GetBlock(hash string, height uint32) (*bchain.Block, error
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, errors.Annotatef(err, "hash %v, height %v", hash, height)
 	}
+	// 转换区块头的格式
 	bbh, err := b.ethHeaderToBlockHeader(&head)
 	if err != nil {
 		return nil, errors.Annotatef(err, "hash %v, height %v", hash, height)
@@ -544,6 +548,7 @@ func (b *EthereumRPC) GetBlock(hash string, height uint32) (*bchain.Block, error
 			return nil, errors.Annotatef(err, "hash %v, height %v, txid %v", hash, height, tx.Hash)
 		}
 		btxs[i] = *btx
+		// 按照同步逻辑进行去除mempool中已经被纳入到区块的交易，这种方式就是与链上数据非实时一样，但是P2P节点应该也都存在，保证当前高度状态的数据一致应该就行；
 		if b.mempoolInitialized {
 			b.Mempool.RemoveTransactionFromMempool(tx.Hash)
 		}

@@ -444,8 +444,10 @@ func (d *RocksDB) ConnectBlock(block *bchain.Block) error {
 		glog.Infof("rocksdb: insert %d %s", block.Height, block.Hash)
 	}
 
+	// 主要区分两种币种，BTC类型和ETH类型的币种
 	chainType := d.chainParser.GetChainType()
 
+	// 将高度以及区块基本信息插入到DB
 	if err := d.writeHeightFromBlock(wb, block, opInsert); err != nil {
 		return err
 	}
@@ -1252,7 +1254,7 @@ type BlockInfo struct {
 	Size   uint32
 	Height uint32 // Height is not packed!
 }
-
+// vlq编码将待存储数据进行格式化
 func (d *RocksDB) packBlockInfo(block *BlockInfo) ([]byte, error) {
 	packed := make([]byte, 0, 64)
 	varBuf := make([]byte, vlq.MaxLen64)
@@ -1354,10 +1356,11 @@ func (d *RocksDB) writeHeightFromBlock(wb *gorocksdb.WriteBatch, block *bchain.B
 		Txs:    uint32(len(block.Txs)),
 		Size:   uint32(block.Size),
 		Height: block.Height,
-	}, op)
+	}, op) // opType更合适
 }
 
 func (d *RocksDB) writeHeight(wb *gorocksdb.WriteBatch, height uint32, bi *BlockInfo, op int) error {
+	// 以高度做key，blockInfo做value，数据
 	key := packUint(height)
 	switch op {
 	case opInsert:
